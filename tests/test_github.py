@@ -1,3 +1,4 @@
+from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
@@ -25,7 +26,9 @@ class TestGitHubFunctions:
 
     @patch("sector.github.set_headers")
     @patch("requests.get")
-    def test_get_file_content_success(self, mock_get, mock_set_headers):
+    def test_get_file_content_success(
+        self, mock_get: Mock, mock_set_headers: Mock
+    ) -> None:
         """Test successful file content retrieval."""
         # Mock the headers
         mock_set_headers.return_value = {"Authorization": "token test"}
@@ -56,7 +59,9 @@ class TestGitHubFunctions:
 
     @patch("sector.github.set_headers")
     @patch("requests.get")
-    def test_get_file_content_not_found(self, mock_get, mock_set_headers):
+    def test_get_file_content_not_found(
+        self, mock_get: Mock, mock_set_headers: Mock
+    ) -> None:
         """Test file content retrieval when file is not found."""
         # Mock the headers
         mock_set_headers.return_value = {"Authorization": "token test"}
@@ -75,8 +80,8 @@ class TestGitHubFunctions:
     @patch("sector.github.get_file_content")
     @patch("sector.github.get_release")
     def test_get_kuadrant_operator_release_yaml_success(
-        self, mock_get_release, mock_get_file_content
-    ):
+        self, mock_get_release: Mock, mock_get_file_content: Mock
+    ) -> None:
         """Test successful kuadrant-operator release.yaml retrieval."""
         # Mock the release data
         mock_release_data = ReleaseData(
@@ -112,7 +117,9 @@ class TestGitHubFunctions:
         )
 
     @patch("sector.github.get_release")
-    def test_get_kuadrant_operator_release_yaml_no_release(self, mock_get_release):
+    def test_get_kuadrant_operator_release_yaml_no_release(
+        self, mock_get_release: Mock
+    ) -> None:
         """Test kuadrant-operator release.yaml retrieval when no release is found."""
         # Mock empty release data
         mock_release_data = ReleaseData(tag="")
@@ -125,8 +132,8 @@ class TestGitHubFunctions:
     @patch("sector.github.get_file_content")
     @patch("sector.github.get_release")
     def test_get_kuadrant_operator_release_yaml_file_not_found(
-        self, mock_get_release, mock_get_file_content
-    ):
+        self, mock_get_release: Mock, mock_get_file_content: Mock
+    ) -> None:
         """Test kuadrant-operator release.yaml retrieval when file is not found."""
         # Mock the release data
         mock_release_data = ReleaseData(tag="v1.0.0")
@@ -148,22 +155,22 @@ class TestGitHubFunctions:
 class TestVersionProcessing:
     """Test version processing functions."""
 
-    def test_process_version_adds_v_prefix(self):
+    def test_process_version_adds_v_prefix(self) -> None:
         """Test that versions get 'v' prefix when not present."""
         assert version_formatter("1.0.0") == "v1.0.0"
         assert version_formatter("2.5.1") == "v2.5.1"
         assert version_formatter("0.1.0") == "v0.1.0"
 
-    def test_process_version_keeps_existing_v_prefix(self):
+    def test_process_version_keeps_existing_v_prefix(self) -> None:
         """Test that existing 'v' prefix gets another 'v' prefix."""
         assert version_formatter("v1.0.0") == "vv1.0.0"
         assert version_formatter("v2.5.1") == "vv2.5.1"
 
-    def test_process_version_handles_zero_version(self):
+    def test_process_version_handles_zero_version(self) -> None:
         """Test that '0.0.0' is converted to 'main'."""
         assert version_formatter("0.0.0") == "main"
 
-    def test_process_version_handles_edge_cases(self):
+    def test_process_version_handles_edge_cases(self) -> None:
         """Test edge cases for version processing."""
         assert version_formatter("1.0.0-alpha") == "v1.0.0-alpha"
         assert version_formatter("v1.0.0-beta") == "vv1.0.0-beta"
@@ -173,7 +180,7 @@ class TestVersionProcessing:
 class TestReleaseYamlParsing:
     """Test release.yaml parsing functionality."""
 
-    def test_parse_release_yaml_dict_format(self):
+    def test_parse_release_yaml_dict_format(self) -> None:
         """Test parsing YAML with dictionary format."""
         yaml_content = """
 dependencies:
@@ -192,7 +199,7 @@ dependencies:
         assert "limitador@v2.0.0" in repo_strings
         assert "dns-operator@main" in repo_strings
 
-    def test_parse_release_yaml_list_format(self):
+    def test_parse_release_yaml_list_format(self) -> None:
         """Test parsing YAML with list format - should fail as not supported."""
         yaml_content = """
 projects:
@@ -208,7 +215,7 @@ projects:
         with pytest.raises(KeyError):
             parse_release_yaml_to_repos(yaml_content)
 
-    def test_parse_release_yaml_mixed_format(self):
+    def test_parse_release_yaml_mixed_format(self) -> None:
         """Test parsing YAML with mixed dictionary and list formats."""
         yaml_content = """
 dependencies:
@@ -231,7 +238,7 @@ projects:
         assert "authorino@v1.0.0" in repo_strings
         assert "limitador@v2.0.0" in repo_strings
 
-    def test_parse_release_yaml_empty_content(self):
+    def test_parse_release_yaml_empty_content(self) -> None:
         """Test parsing empty YAML content."""
         yaml_content = """
 metadata:
@@ -242,7 +249,7 @@ metadata:
         with pytest.raises(KeyError):
             parse_release_yaml_to_repos(yaml_content)
 
-    def test_parse_release_yaml_invalid_yaml(self):
+    def test_parse_release_yaml_invalid_yaml(self) -> None:
         """Test parsing invalid YAML content."""
         yaml_content = """
 invalid: yaml: content: [
@@ -252,7 +259,7 @@ invalid: yaml: content: [
         with pytest.raises(yaml.YAMLError):
             parse_release_yaml_to_repos(yaml_content)
 
-    def test_parse_release_yaml_non_dict_root(self):
+    def test_parse_release_yaml_non_dict_root(self) -> None:
         """Test parsing YAML with non-dictionary root."""
         yaml_content = """
 - item1
@@ -263,7 +270,7 @@ invalid: yaml: content: [
         with pytest.raises(TypeError):
             parse_release_yaml_to_repos(yaml_content)
 
-    def test_parse_release_yaml_complex_structure(self):
+    def test_parse_release_yaml_complex_structure(self) -> None:
         """Test parsing complex YAML structure."""
         yaml_content = """
 metadata:

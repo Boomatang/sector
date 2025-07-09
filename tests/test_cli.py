@@ -1,3 +1,4 @@
+from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
@@ -17,12 +18,12 @@ class TestResultCommand:
     @patch("builtins.print")
     def test_result_includes_kuadrant_operator(
         self,
-        mock_print,
-        mock_get_logger,
-        mock_repo_class,
-        mock_parse_yaml,
-        mock_get_release_yaml,
-    ):
+        mock_print: Mock,
+        mock_get_logger: Mock,
+        mock_repo_class: Mock,
+        mock_parse_yaml: Mock,
+        mock_get_release_yaml: Mock,
+    ) -> None:
         """Test that the result command includes kuadrant-operator in the repository list."""
         # Mock the logger
         mock_logger = Mock()
@@ -36,10 +37,15 @@ dependencies:
         """
 
         # Mock parsed repos from YAML (without kuadrant-operator)
-        mock_authorino_repo = Mock()
-        mock_authorino_repo.__str__ = Mock(return_value="authorino@v1.0.0")
-        mock_limitador_repo = Mock()
-        mock_limitador_repo.__str__ = Mock(return_value="limitador@v2.0.0")
+        class MockRepo:
+            def __init__(self, name: str):
+                self.name = name
+
+            def __str__(self) -> str:
+                return self.name
+
+        mock_authorino_repo = MockRepo("authorino@v1.0.0")
+        mock_limitador_repo = MockRepo("limitador@v2.0.0")
 
         mock_parse_yaml.return_value = [mock_authorino_repo, mock_limitador_repo]
 
@@ -47,8 +53,7 @@ dependencies:
         mock_get_release_yaml.return_value = ("v3.0.0", test_yaml_content)
 
         # Mock the kuadrant-operator repo creation
-        mock_kuadrant_repo = Mock()
-        mock_kuadrant_repo.__str__ = Mock(return_value="kuadrant-operator@v3.0.0")
+        mock_kuadrant_repo = MockRepo("kuadrant-operator@v3.0.0")
         mock_repo_class.return_value = mock_kuadrant_repo
 
         # Call the result function using CliRunner
@@ -84,8 +89,8 @@ dependencies:
     @patch("sector.logger.get_logger")
     @patch("builtins.print")
     def test_result_handles_error(
-        self, mock_print, mock_get_logger, mock_get_release_yaml
-    ):
+        self, mock_print: Mock, mock_get_logger: Mock, mock_get_release_yaml: Mock
+    ) -> None:
         """Test that the result command handles errors gracefully."""
         # Mock the logger
         mock_logger = Mock()
