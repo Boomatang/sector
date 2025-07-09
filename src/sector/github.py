@@ -9,7 +9,9 @@ import yaml
 from rich import print
 from rich.progress import track
 
-log: logging.Logger
+from sector import logger
+
+log: logging.Logger = logger.get_logger("github")
 TIMEOUT = 30
 
 

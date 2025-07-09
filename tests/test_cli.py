@@ -59,7 +59,9 @@ dependencies:
         assert result_output.exit_code == 0
 
         # Verify that the kuadrant-operator release.yaml was fetched
-        mock_get_release_yaml.assert_called_once_with("kuadrant", mock_logger)
+        mock_get_release_yaml.assert_called_once_with(
+            mock_logger, "kuadrant", "kuadrant-operator"
+        )
 
         # Verify that the YAML was parsed
         mock_parse_yaml.assert_called_once_with(test_yaml_content)
