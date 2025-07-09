@@ -131,7 +131,7 @@ def process_repo(owner: str, repo: str, detailed: bool = False) -> Data:
                 if pr["id"] in seen:
                     break
                 seen.append(pr["id"])
-                prData = PrData(title=pr["title"], url=pr["url"])
+                prData = PrData(title=pr["title"], url=pr["html_url"])
 
                 data.github.prs.append(prData)
     return data
@@ -150,7 +150,8 @@ def print_data(data: Data, new: bool = False, detailed: bool = False) -> None:
             f"\nRelease: {data.github.name} ({data.github.tag}) {new_string(new)}"
             f"\nReleased: {data.github.date}"
             f"\nURL: {data.github.url}"
-            f"\nTotal PRs ahead on main: {len(data.github.prs)} ({data.github.commit_count})"
+            f"\nTotal PRs ahead on main: {len(data.github.prs)}"
+            f"({data.github.commit_count} commits)"
         )
         for pr in data.github.prs:
             print(f"-  {pr.title}\n   {pr.url}")

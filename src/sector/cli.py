@@ -52,7 +52,10 @@ def cli(ctx: click.Context, debug: bool) -> None:
     help="Changet the order in which the list is ordered.",
 )
 @click.option(
-    "--detailed", is_flag=True, help="Display more details about the projects"
+    "--detailed",
+    is_flag=True,
+    help="Display more details about the projects. "
+    "This requires a number of calls to the github api and can be very slow.",
 )
 def info(owner: str, project: tuple[str], _sort: str, detailed: bool) -> None:
     """
