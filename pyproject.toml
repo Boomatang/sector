@@ -6,14 +6,38 @@ authors = [
     {name = "Jim Fitzpatrick",email = "jimfity@gmail.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 dependencies = [
+    "requests (>=2.32.3,<3.0.0)",
+    "rich (>=14.0.0,<15.0.0)",
+    "click (>=8.1.8,<9.0.0)",
+    "rich-click (>=1.8.8,<2.0.0)",
 ]
 
 [tool.poetry]
 packages = [{include = "sector", from = "src"}]
 
+[tool.poetry.scripts]
+sector = "sector.cli:cli"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.5"
+pytest-cov = "^6.1.1"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+addopts = "--cov=src --showlocals --strict-markers"
+
+[tool.isort]
+profile = "black"
+
+[tool.bandit.assert_used]
+skips = ["*/*_test.py", "*/test_*.py"]
+
+[tool.towncrier]
+filename = "CHANGELOG.md"
+directory = "changes"
+package = "sector"
