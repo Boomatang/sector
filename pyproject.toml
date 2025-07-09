@@ -12,6 +12,7 @@ dependencies = [
     "rich (>=14.0.0,<15.0.0)",
     "click (>=8.1.8,<9.0.0)",
     "rich-click (>=1.8.8,<2.0.0)",
+    "pyyaml (>=6.0.0,<7.0.0)",
 ]
 
 [tool.poetry]
@@ -23,6 +24,7 @@ sector = "sector.cli:cli"
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.5"
 pytest-cov = "^6.1.1"
+types-pyyaml = "^6.0.12.20250516"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

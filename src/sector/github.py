@@ -1,9 +1,11 @@
+import base64
 import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any
 
 import requests
+import yaml
 from rich import print
 from rich.progress import track
 
@@ -176,3 +178,97 @@ def print_data(data: Data, new: bool = False, detailed: bool = False) -> None:
         print()
     else:
         print(f"{data.owner}/{data.project} {data.github.name} {new_string(new)}")
+
+
+def mapper(config: dict[str, str], repos: list[Repo]) -> list[Repo]:
+    for repo in repos:
+        if repo.name in config:
+            repo.name = config[repo.name]
+
+    return repos
+
+
+def result(
+    owner: str, project: str, log: logging.Logger, config: dict[Any, Any]
+) -> None:
+    release_tag, release_yaml_content = get_kuadrant_operator_release_yaml(
+        log, owner, project
+    )
+
+    log.debug("Parse the release.yaml to extract repository versions")
+    repos = parse_release_yaml_to_repos(release_yaml_content)
+
+    root_repo = Repo(f"{project}@{release_tag}")
+    repos.append(root_repo)
+
+    repos = mapper(config["mapper"], repos)
+
+    print(f"[bold cyan]Extracted {len(repos)} repositories:[/bold cyan]")
+    for repo in repos:
+        print(f"  - {repo}")
+
+    info(owner, repos, log, "name", True)
+
+
+def get_file_content(owner: str, repo: str, file_path: str, ref: str) -> str:
+    global log
+    log.info(f"Getting file content for {owner}/{repo}/{file_path} at {ref}")
+
+    url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
+    response = requests.get(url, headers=set_headers(), timeout=TIMEOUT)
+    response.raise_for_status()
+    file_data = response.json()
+
+    # GitHub API returns content in base64 encoding
+    content = base64.b64decode(file_data["content"]).decode("utf-8")
+
+    log.debug(f"Successfully fetched {file_path} content from {ref}")
+    return content
+
+
+def get_kuadrant_operator_release_yaml(
+    logger: logging.Logger, owner: str, _repo: str
+) -> tuple[str, str]:
+    global log
+    log = logger
+    repo = Repo(_repo)
+    log.info(f"Getting {repo} release.yaml")
+
+    log.debug("Get the latest release information")
+    release_data = get_release(owner, repo)
+
+    if not release_data.tag:
+        raise ValueError(f"No release found for {repo}")
+
+    log.debug("Fetch the release.yaml file content")
+    try:
+        release_yaml_content = get_file_content(
+            owner=owner,
+            repo=repo.name,
+            file_path="release.yaml",
+            ref=release_data.tag,
+        )
+
+        log.info(f"Successfully fetched release.yaml for {release_data.tag}")
+        return release_data.tag, release_yaml_content
+
+    except requests.HTTPError as e:
+        if e.response.status_code == 404:
+            raise ValueError(
+                f"release.yaml not found in {repo} release {release_data.tag}"
+            )
+        raise
+
+
+def parse_release_yaml_to_repos(yaml_str: str) -> list[Repo]:
+    repos: list[Repo] = []
+    data = yaml.safe_load(yaml_str)
+    for key, value in data["dependencies"].items():
+        repos.append(Repo(f"{key}@{version_formatter(value)}"))
+    return repos
+
+
+def version_formatter(version: str) -> str:
+    if version == "0.0.0":
+        return "main"
+    return f"v{version}"

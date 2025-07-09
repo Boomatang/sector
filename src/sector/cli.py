@@ -2,7 +2,7 @@ import click
 from rich import print
 from rich_click import RichGroup
 
-from sector import github, logger
+from sector import configuration, github, logger
 
 
 @click.group(cls=RichGroup)
@@ -73,6 +73,55 @@ def info(owner: str, project: tuple[str], _sort: str, detailed: bool) -> None:
     except ValueError as e:
         log.exception(e)
         print(e)
+
+
+@cli.command()
+@click.option(
+    "--owner",
+    default="kuadrant",
+    help="Set the owner/org used in GitHub",
+    show_default=True,
+    type=str,
+)
+@click.option(
+    "-p",
+    "--project",
+    "project",
+    default="kuadrant-operator",
+    help="Set the project at the top of the chain."
+    "This project needs to have a `release.yaml` in the root of the project",
+    show_default=True,
+    type=str,
+)
+@click.option(
+    "-c",
+    "--configuration-file",
+    "config_path",
+    default="./config.toml",
+    help="Set the path to a configuration file which is needed for mapper some elements within the setup",
+    show_default=True,
+    type=str,
+)
+def result(owner: str, project: str, config_path: str) -> None:
+    """
+    Get the break down of what is new in the project and its dependencies.
+    This includes fetching the release.yaml file for the latest kuadrant-operator release.
+    GITHUB_TOKEN is a required environment variable.
+    """
+    log = logger.get_logger("cli")
+    log.info("Running 'sector result'")
+    log.debug(f"{locals()=}")
+
+    try:
+        _config = configuration.load(config_path)
+        github.result(owner, project, log, _config)
+
+    except ValueError as e:
+        log.exception(e)
+        print(f"[bold red]Error:[/bold red] {e}")
+    except Exception as e:
+        log.exception(e)
+        print(f"[bold red]Unexpected error:[/bold red] {e}")
 
 
 if __name__ == "__main__":
