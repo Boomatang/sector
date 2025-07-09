@@ -34,9 +34,24 @@ class Data:
     github: ReleaseData
 
 
+@dataclass
+class Repo:
+    name: str
+    tag: str | None
+
+    def __init__(self, project: str) -> None:
+        _project = project.split("@")
+        self.name = _project[0]
+        self.tag = _project[1] if 1 < len(_project) else None
+
+    def __repr__(self) -> str:
+        tag = f"@{self.tag}" if self.tag is not None else ""
+        return f"{self.name}{tag}"
+
+
 def info(
     owner: str,
-    repos: tuple[str],
+    repos: list[Repo],
     logger: logging.Logger,
     _sort: str,
     detailed: bool,
@@ -69,10 +84,11 @@ def set_headers() -> dict[str, str]:
     }
 
 
-def get_latest_releases(owner: str, repo: str) -> ReleaseData:
+def get_release(owner: str, repo: Repo) -> ReleaseData:
     global log
     log.info(f"Getting release data for {owner}/{repo}")
-    url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
+    version = "latest" if repo.tag is None else f"tags/{repo.tag}"
+    url = f"https://api.github.com/repos/{owner}/{repo.name}/releases/{version}"
     response = requests.get(url, headers=set_headers(), timeout=TIMEOUT)
     response.raise_for_status()
     release = response.json()
@@ -114,19 +130,20 @@ def list_pr_commits(url: str) -> list[str]:
     return [commit["sha"] for commit in response.json()]
 
 
-def process_repo(owner: str, repo: str, detailed: bool = False) -> Data:
+def process_repo(owner: str, repo: Repo, detailed: bool = False) -> Data:
     global log
     log.info(f"Processing data for {owner}/{repo}")
 
-    github = get_latest_releases(owner, repo)
+    github = get_release(owner, repo)
     if github is not None:
-        data = Data(owner=owner, project=repo, github=github)
+        data = Data(owner=owner, project=repo.name, github=github)
     if detailed:
-        sha_list = get_commits_between(owner, repo, data.github.tag, "main")
+        base = repo.tag if repo.tag is not None else data.github.tag
+        sha_list = get_commits_between(owner, repo.name, base, "main")
         data.github.commit_count = len(sha_list)
         seen = []
         for sha in sha_list:
-            prs = find_prs_for_commit(owner, repo, sha)
+            prs = find_prs_for_commit(owner, repo.name, sha)
             for pr in prs:
                 if pr["id"] in seen:
                     break

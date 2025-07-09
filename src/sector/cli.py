@@ -39,7 +39,9 @@ def cli(ctx: click.Context, debug: bool) -> None:
         "limitador-operator",
         "wasm-shim",
     ),
-    help="Look up information for a project. This can be used multiple times.",
+    help="Look up information for a project. This can be used multiple times."
+    "When used with `--detailed` adding `@<tag>` list details all the way back to that release"
+    "Accepted formats <project> | <project>@<tag>",
     show_default=True,
 )
 @click.option(
@@ -66,7 +68,8 @@ def info(owner: str, project: tuple[str], _sort: str, detailed: bool) -> None:
     log.info("Running 'sector info'")
     log.debug(f"{locals()=}")
     try:
-        github.info(owner, project, log, _sort, detailed)
+        _project = [github.Repo(p) for p in project]
+        github.info(owner, _project, log, _sort, detailed)
     except ValueError as e:
         log.exception(e)
         print(e)
