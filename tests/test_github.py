@@ -10,7 +10,7 @@ from sector.github import (
     ReleaseData,
     Repo,
     get_file_content,
-    get_kuadrant_operator_release_yaml,
+    get_operator_release_yaml,
     parse_release_yaml_to_repos,
     version_formatter,
 )
@@ -99,9 +99,7 @@ class TestGitHubFunctions:
         mock_get_file_content.return_value = test_yaml_content
 
         # Test the function
-        tag, content = get_kuadrant_operator_release_yaml(
-            log, "kuadrant", "kuadrant-operator"
-        )
+        tag, content = get_operator_release_yaml(log, "kuadrant", "kuadrant-operator")
 
         # Verify the results
         assert tag == "v1.0.0"
@@ -127,7 +125,7 @@ class TestGitHubFunctions:
 
         # Test the function
         with pytest.raises(ValueError, match="No release found for kuadrant-operator"):
-            get_kuadrant_operator_release_yaml(log, "kuadrant", "kuadrant-operator")
+            get_operator_release_yaml(log, "kuadrant", "kuadrant-operator")
 
     @patch("sector.github.get_file_content")
     @patch("sector.github.get_release")
@@ -149,7 +147,7 @@ class TestGitHubFunctions:
             ValueError,
             match="release.yaml not found in kuadrant-operator release v1.0.0",
         ):
-            get_kuadrant_operator_release_yaml(log, "kuadrant", "kuadrant-operator")
+            get_operator_release_yaml(log, "kuadrant", "kuadrant-operator")
 
 
 class TestVersionProcessing:

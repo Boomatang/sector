@@ -102,7 +102,16 @@ def info(owner: str, project: tuple[str], _sort: str, detailed: bool) -> None:
     show_default=True,
     type=str,
 )
-def result(owner: str, project: str, config_path: str) -> None:
+@click.option(
+    "--sort",
+    "_sort",
+    default="time",
+    type=click.Choice(["time", "name"], case_sensitive=False),
+    show_choices=True,
+    show_default=True,
+    help="Changet the order in which the list is ordered.",
+)
+def result(owner: str, project: str, config_path: str, _sort: str) -> None:
     """
     Get the break down of what is new in the project and its dependencies.
     This includes fetching the release.yaml file for the latest kuadrant-operator release.
@@ -114,7 +123,7 @@ def result(owner: str, project: str, config_path: str) -> None:
 
     try:
         _config = configuration.load(config_path)
-        github.result(owner, project, log, _config)
+        github.result(owner, project, log, _config, _sort)
 
     except ValueError as e:
         log.exception(e)

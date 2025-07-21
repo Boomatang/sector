@@ -2,7 +2,7 @@ import base64
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Dict
 
 import requests
 import yaml
@@ -191,25 +191,62 @@ def mapper(config: dict[str, str], repos: list[Repo]) -> list[Repo]:
 
 
 def result(
-    owner: str, project: str, log: logging.Logger, config: dict[Any, Any]
+    owner: str, project: str, log: logging.Logger, config: dict[Any, Any], _sort: str
 ) -> None:
-    release_tag, release_yaml_content = get_kuadrant_operator_release_yaml(
-        log, owner, project
-    )
+    release_tag, release_yaml_content = get_operator_release_yaml(log, owner, project)
 
     log.debug("Parse the release.yaml to extract repository versions")
     repos = parse_release_yaml_to_repos(release_yaml_content)
+
+    sub_repos = []
+    for repo in repos:
+        log.debug(f"trying to find details on {repo}")
+        try:
+            release_tag, release_yaml_content = get_operator_release_yaml(
+                log, owner, repo.name, _version=repo.tag
+            )
+            sub_repos.extend(parse_release_yaml_to_repos(release_yaml_content))
+        except ValueError:
+            log.debug(f"Error trying to find release.yaml for {repo.name}")
+
+        try:
+            related_images = get_related_images(log, owner, repo)
+            sub_repos.extend(parse_relate_images(log, related_images))
+        except ValueError:
+            log.debug(f"Error trying to find CSV file for {repo.name}")
+
+    repos.extend(sub_repos)
 
     root_repo = Repo(f"{project}@{release_tag}")
     repos.append(root_repo)
 
     repos = mapper(config["mapper"], repos)
+    repos.sort(key=lambda r: r.name)
 
     print(f"[bold cyan]Extracted {len(repos)} repositories:[/bold cyan]")
     for repo in repos:
         print(f"  - {repo}")
 
-    info(owner, repos, log, "name", True)
+    info(owner, repos, log, _sort, True)
+
+
+def parse_relate_images(log: logging.Logger, images: list[str]) -> list[Repo]:
+    log.info("parsing images to standard format")
+    out: list[Repo] = []
+    for image in images:
+        tag_split = image.split(":")
+        tag = "main"
+        if len(tag_split) == 2:
+            tag = tag_split[1]
+
+        if tag == "latest":
+            tag = "main"
+
+        path_split = tag_split[0].split("/")
+        name = path_split[-1]
+        out.append(Repo(f"{name}@{tag}"))
+
+    return out
 
 
 def get_file_content(owner: str, repo: str, file_path: str, ref: str) -> str:
@@ -228,19 +265,59 @@ def get_file_content(owner: str, repo: str, file_path: str, ref: str) -> str:
     return content
 
 
-def get_kuadrant_operator_release_yaml(
-    logger: logging.Logger, owner: str, _repo: str
+def get_related_images(log: logging.Logger, owner: str, _repo: Repo) -> list[str]:
+    log.info(f"Getting the related images from {_repo.name}'s CSV")
+    _images: list[str] = []
+
+    try:
+        ref = _repo.tag if _repo.tag is not None else "main"
+        csv_yaml_content = get_file_content(
+            owner,
+            _repo.name,
+            f"bundle/manifests/{_repo.name}.clusterserviceversion.yaml",
+            ref,
+        )
+    except requests.exceptions.HTTPError as e:
+        log.debug(f"file was not found, {e}")
+        raise ValueError("file not found")
+    content: Dict[str, Any] = yaml.safe_load(csv_yaml_content)
+    log.info("CSV file loaded")
+    spec = content.get("spec")
+    if spec is None:
+        return _images
+    related_images = spec.get("relatedImages")
+    log.debug(f"{related_images=}")
+
+    if related_images is None:
+        return _images
+
+    for image in related_images:
+        log.debug(image)
+        _images.append(image["image"])
+    log.debug(f"{_images=}")
+    return _images
+
+
+def get_operator_release_yaml(
+    logger: logging.Logger, owner: str, _repo: str, _version: str | None = None
 ) -> tuple[str, str]:
     global log
     log = logger
     repo = Repo(_repo)
     log.info(f"Getting {repo} release.yaml")
 
-    log.debug("Get the latest release information")
-    release_data = get_release(owner, repo)
+    tag = _version
+    if _version is None:
+        log.debug("Get the latest release information")
+        release_data = get_release(owner, repo)
 
-    if not release_data.tag:
-        raise ValueError(f"No release found for {repo}")
+        if not release_data.tag:
+            raise ValueError(f"No release found for {repo}")
+
+        tag = release_data.tag
+
+    if tag is None:
+        raise ValueError(f"No tag available for {repo}")
 
     log.debug("Fetch the release.yaml file content")
     try:
@@ -248,17 +325,15 @@ def get_kuadrant_operator_release_yaml(
             owner=owner,
             repo=repo.name,
             file_path="release.yaml",
-            ref=release_data.tag,
+            ref=tag,
         )
 
-        log.info(f"Successfully fetched release.yaml for {release_data.tag}")
-        return release_data.tag, release_yaml_content
+        log.info(f"Successfully fetched release.yaml for {tag}")
+        return tag, release_yaml_content
 
     except requests.HTTPError as e:
         if e.response.status_code == 404:
-            raise ValueError(
-                f"release.yaml not found in {repo} release {release_data.tag}"
-            )
+            raise ValueError(f"release.yaml not found in {repo} release {tag}")
         raise
 
 

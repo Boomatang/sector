@@ -11,23 +11,33 @@ from sector.github import ReleaseData
 class TestResultCommand:
     """Test the result command functionality."""
 
-    @patch("sector.github.get_kuadrant_operator_release_yaml")
+    @patch("sector.github.info")
+    @patch("sector.github.get_related_images")
+    @patch("sector.configuration.load")
+    @patch("sector.github.get_operator_release_yaml")
     @patch("sector.github.parse_release_yaml_to_repos")
-    @patch("sector.github.Repo")
     @patch("sector.logger.get_logger")
     @patch("builtins.print")
     def test_result_includes_kuadrant_operator(
         self,
         mock_print: Mock,
         mock_get_logger: Mock,
-        mock_repo_class: Mock,
         mock_parse_yaml: Mock,
         mock_get_release_yaml: Mock,
+        mock_config_load: Mock,
+        mock_get_related_images: Mock,
+        mock_info: Mock,
     ) -> None:
         """Test that the result command includes kuadrant-operator in the repository list."""
         # Mock the logger
         mock_logger = Mock()
         mock_get_logger.return_value = mock_logger
+
+        # Mock configuration
+        mock_config_load.return_value = {"mapper": {}}
+
+        # Mock get_related_images to raise ValueError for all calls
+        mock_get_related_images.side_effect = ValueError("file not found")
 
         # Mock the release.yaml content and parsing
         test_yaml_content = """
@@ -40,6 +50,7 @@ dependencies:
         class MockRepo:
             def __init__(self, name: str):
                 self.name = name
+                self.tag = "v1.0.0" if "authorino" in name else "v2.0.0"
 
             def __str__(self) -> str:
                 return self.name
@@ -49,12 +60,12 @@ dependencies:
 
         mock_parse_yaml.return_value = [mock_authorino_repo, mock_limitador_repo]
 
-        # Mock kuadrant-operator release data
-        mock_get_release_yaml.return_value = ("v3.0.0", test_yaml_content)
-
-        # Mock the kuadrant-operator repo creation
-        mock_kuadrant_repo = MockRepo("kuadrant-operator@v3.0.0")
-        mock_repo_class.return_value = mock_kuadrant_repo
+        # Mock kuadrant-operator release data - first call for main project, then ValueError for sub-repos
+        mock_get_release_yaml.side_effect = [
+            ("v3.0.0", test_yaml_content),  # First call for kuadrant-operator
+            ValueError("No release found"),  # Second call for authorino
+            ValueError("No release found"),  # Third call for limitador
+        ]
 
         # Call the result function using CliRunner
         runner = CliRunner()
@@ -63,16 +74,14 @@ dependencies:
         # Verify the command executed successfully
         assert result_output.exit_code == 0
 
-        # Verify that the kuadrant-operator release.yaml was fetched
-        mock_get_release_yaml.assert_called_once_with(
+        # Verify that the kuadrant-operator release.yaml was fetched (first call)
+        assert mock_get_release_yaml.call_count == 3
+        mock_get_release_yaml.assert_any_call(
             mock_logger, "kuadrant", "kuadrant-operator"
         )
 
         # Verify that the YAML was parsed
         mock_parse_yaml.assert_called_once_with(test_yaml_content)
-
-        # Verify that kuadrant-operator Repo was created with the correct tag
-        mock_repo_class.assert_called_once_with("kuadrant-operator@v3.0.0")
 
         # Verify the output contains the expected information
         output_text = result_output.output
@@ -85,16 +94,24 @@ dependencies:
         assert "authorino@v1.0.0" in output_text
         assert "limitador@v2.0.0" in output_text
 
-    @patch("sector.github.get_kuadrant_operator_release_yaml")
+    @patch("sector.configuration.load")
+    @patch("sector.github.get_operator_release_yaml")
     @patch("sector.logger.get_logger")
     @patch("builtins.print")
     def test_result_handles_error(
-        self, mock_print: Mock, mock_get_logger: Mock, mock_get_release_yaml: Mock
+        self,
+        mock_print: Mock,
+        mock_get_logger: Mock,
+        mock_get_release_yaml: Mock,
+        mock_config_load: Mock,
     ) -> None:
         """Test that the result command handles errors gracefully."""
         # Mock the logger
         mock_logger = Mock()
         mock_get_logger.return_value = mock_logger
+
+        # Mock configuration
+        mock_config_load.return_value = {"mapper": {}}
 
         # Mock an error when fetching release.yaml
         mock_get_release_yaml.side_effect = ValueError(
