@@ -23,7 +23,10 @@ jobs:
         python-version: '3.13'
 
     - name: Install dependencies
-      run: python -m pip install pre-commit
+      run: python -m pip install pre-commit poetry pytest
+
+    - name: Install Dev tools
+      run: poetry install --all-groups
 
     - name: Install pre-commit
       run: |
