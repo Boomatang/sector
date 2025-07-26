@@ -8,6 +8,7 @@ import requests
 import yaml
 from rich import print
 from rich.progress import track
+from rich.tree import Tree
 
 from sector import logger
 
@@ -201,20 +202,28 @@ def result(
     log.debug("Parse the release.yaml to extract repository versions")
     repos = parse_release_yaml_to_repos(release_yaml_content)
 
+    root_repo = Repo(f"{project}@{release_tag}")
+    tree = Tree(str(root_repo))
     sub_repos = []
     for repo in repos:
+        local_tree = tree.add(str(repo))
         log.debug(f"trying to find details on {repo}")
         try:
             release_tag, release_yaml_content = get_operator_release_yaml(
                 log, owner, repo.name, _version=repo.tag
             )
-            sub_repos.extend(parse_release_yaml_to_repos(release_yaml_content))
+            parsed_release_yaml = parse_release_yaml_to_repos(release_yaml_content)
+            [local_tree.add(str(r)) for r in parsed_release_yaml]
+            sub_repos.extend(parsed_release_yaml)
         except ValueError:
             log.debug(f"Error trying to find release.yaml for {repo.name}")
 
         try:
             related_images = get_related_images(log, owner, repo)
-            sub_repos.extend(parse_relate_images(log, related_images))
+            parsed_relate_images = parse_relate_images(log, related_images)
+            [local_tree.add(str(r)) for r in parsed_relate_images]
+
+            sub_repos.extend(parsed_relate_images)
         except ValueError:
             log.debug(f"Error trying to find CSV file for {repo.name}")
 
@@ -227,8 +236,12 @@ def result(
     repos.sort(key=lambda r: r.name)
 
     print(f"[bold cyan]Extracted {len(repos)} repositories:[/bold cyan]")
-    for repo in repos:
-        print(f"  - {repo}")
+    print(tree)
+
+    log.debug(f"Extracted {len(repos)} repositories:")
+    if log.level == logging.DEBUG:
+        for repo in repos:
+            log.debug(f"  - {repo}")
 
     info(owner, repos, log, _sort, True)
 
