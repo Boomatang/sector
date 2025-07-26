@@ -90,6 +90,7 @@ def set_headers() -> dict[str, str]:
 
 def get_release(owner: str, repo: Repo) -> ReleaseData:
     global log
+    log = log
     log.info(f"Getting release data for {owner}/{repo}")
     version = "latest" if repo.tag is None else f"tags/{repo.tag}"
     url = f"https://api.github.com/repos/{owner}/{repo.name}/releases/{version}"
@@ -112,6 +113,7 @@ def get_release(owner: str, repo: Repo) -> ReleaseData:
 
 def get_commits_between(owner: str, repo: str, base: str, head: str) -> list[str]:
     global log
+    log = log
     log.info(f"Getting commits for {owner}/{repo} {base}...{head}")
     url = f"https://api.github.com/repos/{owner}/{repo}/compare/{base}...{head}"
     response = requests.get(url, headers=set_headers(), timeout=TIMEOUT)
@@ -136,6 +138,7 @@ def list_pr_commits(url: str) -> list[str]:
 
 def process_repo(owner: str, repo: Repo, detailed: bool = False) -> Data:
     global log
+    log = log
     log.info(f"Processing data for {owner}/{repo}")
 
     github = get_release(owner, repo)
@@ -251,6 +254,7 @@ def parse_relate_images(log: logging.Logger, images: list[str]) -> list[Repo]:
 
 def get_file_content(owner: str, repo: str, file_path: str, ref: str) -> str:
     global log
+    log = log
     log.info(f"Getting file content for {owner}/{repo}/{file_path} at {ref}")
 
     url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
