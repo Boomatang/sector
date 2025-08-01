@@ -2,7 +2,7 @@ import click
 from rich import print
 from rich_click import RichGroup
 
-from sector import github, logger
+from sector import configuration, github, logger
 
 
 @click.group(cls=RichGroup)
@@ -39,7 +39,9 @@ def cli(ctx: click.Context, debug: bool) -> None:
         "limitador-operator",
         "wasm-shim",
     ),
-    help="Look up information for a project. This can be used multiple times.",
+    help="Look up information for a project. This can be used multiple times."
+    "When used with `--detailed` adding `@<tag>` list details all the way back to that release"
+    "Accepted formats <project> | <project>@<tag>",
     show_default=True,
 )
 @click.option(
@@ -49,7 +51,7 @@ def cli(ctx: click.Context, debug: bool) -> None:
     type=click.Choice(["time", "name"], case_sensitive=False),
     show_choices=True,
     show_default=True,
-    help="Changet the order in which the list is ordered.",
+    help="Change the order in which the list is ordered.",
 )
 @click.option(
     "--detailed",
@@ -57,7 +59,7 @@ def cli(ctx: click.Context, debug: bool) -> None:
     help="Display more details about the projects. "
     "This requires a number of calls to the github api and can be very slow.",
 )
-def info(owner: str, project: tuple[str], _sort: str, detailed: bool) -> None:
+def future(owner: str, project: tuple[str], _sort: str, detailed: bool) -> None:
     """
     List the information about the different projects.
     GITHUB_TOKEN is a required envoriment variable
@@ -66,10 +68,78 @@ def info(owner: str, project: tuple[str], _sort: str, detailed: bool) -> None:
     log.info("Running 'sector info'")
     log.debug(f"{locals()=}")
     try:
-        github.info(owner, project, log, _sort, detailed)
+        _project = [github.Repo(p) for p in project]
+        github.info(owner, _project, log, _sort, detailed)
     except ValueError as e:
         log.exception(e)
         print(e)
+
+
+@cli.command()
+@click.option(
+    "--owner",
+    default="kuadrant",
+    help="Set the owner/org used in GitHub",
+    show_default=True,
+    type=str,
+)
+@click.option(
+    "-p",
+    "--project",
+    "project",
+    default="kuadrant-operator",
+    help="Set the project at the top of the chain."
+    "This project needs to have a `release.yaml` in the root of the project",
+    show_default=True,
+    type=str,
+)
+@click.option(
+    "-c",
+    "--configuration-file",
+    "config_path",
+    default="./config.toml",
+    help="Set the path to a configuration file which is needed for mapper some elements within the setup",
+    show_default=True,
+    type=str,
+)
+@click.option(
+    "--sort",
+    "_sort",
+    default="time",
+    type=click.Choice(["time", "name"], case_sensitive=False),
+    show_choices=True,
+    show_default=True,
+    help="Change the order in which the list is ordered.",
+)
+@click.option(
+    "--version",
+    "_version",
+    default="latest",
+    show_default=True,
+    help="Set the version to look up the details on. The 'latest' tag means the latest release version, and not the main branch",
+)
+def current(
+    owner: str, project: str, config_path: str, _sort: str, _version: str
+) -> None:
+    """
+    Get the break down of what is in the current released version of the project and its dependencies.
+    This includes fetching the release.yaml file for the latest kuadrant-operator release.
+    GITHUB_TOKEN is a required environment variable.
+    """
+    log = logger.get_logger("cli")
+    log.info("Running 'sector result'")
+    log.debug(f"{locals()=}")
+
+    try:
+        _config = configuration.load(config_path)
+        github.result(owner, project, log, _config, _sort, _version)
+
+    except ValueError as e:
+        log.exception(e)
+        print(f"[bold red]Error:[/bold red] {e}")
+    except Exception as e:
+        log.exception(e)
+        print(f"[bold red]Unexpected error:[/bold red] {e}")
 
 
 if __name__ == "__main__":

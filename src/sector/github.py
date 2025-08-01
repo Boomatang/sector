@@ -1,13 +1,18 @@
+import base64
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Dict
 
 import requests
+import yaml
 from rich import print
 from rich.progress import track
+from rich.tree import Tree
 
-log: logging.Logger
+from sector import logger
+
+log: logging.Logger = logger.get_logger("github")
 TIMEOUT = 30
 
 
@@ -34,9 +39,24 @@ class Data:
     github: ReleaseData
 
 
+@dataclass
+class Repo:
+    name: str
+    tag: str | None
+
+    def __init__(self, project: str) -> None:
+        _project = project.split("@")
+        self.name = _project[0]
+        self.tag = _project[1] if 1 < len(_project) else None
+
+    def __repr__(self) -> str:
+        tag = f"@{self.tag}" if self.tag is not None else ""
+        return f"{self.name}{tag}"
+
+
 def info(
     owner: str,
-    repos: tuple[str],
+    repos: list[Repo],
     logger: logging.Logger,
     _sort: str,
     detailed: bool,
@@ -69,10 +89,12 @@ def set_headers() -> dict[str, str]:
     }
 
 
-def get_latest_releases(owner: str, repo: str) -> ReleaseData:
+def get_release(owner: str, repo: Repo) -> ReleaseData:
     global log
+    log = log
     log.info(f"Getting release data for {owner}/{repo}")
-    url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
+    version = "latest" if repo.tag == "latest" else f"tags/{repo.tag}"
+    url = f"https://api.github.com/repos/{owner}/{repo.name}/releases/{version}"
     response = requests.get(url, headers=set_headers(), timeout=TIMEOUT)
     response.raise_for_status()
     release = response.json()
@@ -92,6 +114,7 @@ def get_latest_releases(owner: str, repo: str) -> ReleaseData:
 
 def get_commits_between(owner: str, repo: str, base: str, head: str) -> list[str]:
     global log
+    log = log
     log.info(f"Getting commits for {owner}/{repo} {base}...{head}")
     url = f"https://api.github.com/repos/{owner}/{repo}/compare/{base}...{head}"
     response = requests.get(url, headers=set_headers(), timeout=TIMEOUT)
@@ -114,19 +137,21 @@ def list_pr_commits(url: str) -> list[str]:
     return [commit["sha"] for commit in response.json()]
 
 
-def process_repo(owner: str, repo: str, detailed: bool = False) -> Data:
+def process_repo(owner: str, repo: Repo, detailed: bool = False) -> Data:
     global log
+    log = log
     log.info(f"Processing data for {owner}/{repo}")
 
-    github = get_latest_releases(owner, repo)
+    github = get_release(owner, repo)
     if github is not None:
-        data = Data(owner=owner, project=repo, github=github)
+        data = Data(owner=owner, project=repo.name, github=github)
     if detailed:
-        sha_list = get_commits_between(owner, repo, data.github.tag, "main")
+        base = repo.tag if repo.tag is not None else data.github.tag
+        sha_list = get_commits_between(owner, repo.name, base, "main")
         data.github.commit_count = len(sha_list)
         seen = []
         for sha in sha_list:
-            prs = find_prs_for_commit(owner, repo, sha)
+            prs = find_prs_for_commit(owner, repo.name, sha)
             for pr in prs:
                 if pr["id"] in seen:
                     break
@@ -159,3 +184,207 @@ def print_data(data: Data, new: bool = False, detailed: bool = False) -> None:
         print()
     else:
         print(f"{data.owner}/{data.project} {data.github.name} {new_string(new)}")
+
+
+def mapper(config: dict[str, str], repos: list[Repo]) -> list[Repo]:
+    for repo in repos:
+        if repo.name in config:
+            repo.name = config[repo.name]
+
+    return repos
+
+
+def result(
+    owner: str,
+    project: str,
+    log: logging.Logger,
+    config: dict[Any, Any],
+    _sort: str,
+    _version: str = "latest",
+) -> None:
+    root_repo = Repo(f"{project}")
+    try:
+        release_tag, release_yaml_content = get_operator_release_yaml(
+            log, owner, project, _version
+        )
+        log.debug("Parse the release.yaml to extract repository versions")
+        repos = parse_release_yaml_to_repos(release_yaml_content)
+        root_repo.tag = release_tag
+    except ValueError:
+        log.debug(f"Error trying to find release.yaml for {project}")
+
+        try:
+            root_repo.tag = _version
+            release_data = get_release(owner, root_repo)
+            root_repo.tag = release_data.tag
+            related_images = get_related_images(log, owner, root_repo)
+            repos = parse_relate_images(log, related_images)
+        except ValueError:
+            log.debug(f"Error trying to find CSV file for {project}")
+            exit(0)
+
+    tree = Tree(str(root_repo))
+    sub_repos = []
+    for repo in repos:
+        local_tree = tree.add(str(repo))
+        log.debug(f"trying to find details on {repo}")
+        try:
+            if repo.tag is None:
+                log.error("this should never happen")
+                raise Exception("Tag is none")
+            release_tag, release_yaml_content = get_operator_release_yaml(
+                log, owner, repo.name, _version=repo.tag
+            )
+            parsed_release_yaml = parse_release_yaml_to_repos(release_yaml_content)
+            [local_tree.add(str(r)) for r in parsed_release_yaml]
+            sub_repos.extend(parsed_release_yaml)
+        except ValueError:
+            log.debug(f"Error trying to find release.yaml for {repo.name}")
+
+        try:
+            related_images = get_related_images(log, owner, repo)
+            parsed_relate_images = parse_relate_images(log, related_images)
+            [local_tree.add(str(r)) for r in parsed_relate_images]
+
+            sub_repos.extend(parsed_relate_images)
+        except ValueError:
+            log.debug(f"Error trying to find CSV file for {repo.name}")
+
+    repos.extend(sub_repos)
+
+    repos.append(root_repo)
+
+    repos = mapper(config["mapper"], repos)
+    repos.sort(key=lambda r: r.name)
+
+    print(f"[bold cyan]Extracted {len(repos)} repositories:[/bold cyan]")
+    print(tree)
+
+    log.debug(f"Extracted {len(repos)} repositories:")
+    if log.level == logging.DEBUG:
+        for repo in repos:
+            log.debug(f"  - {repo}")
+
+    info(owner, repos, log, _sort, True)
+
+
+def parse_relate_images(log: logging.Logger, images: list[str]) -> list[Repo]:
+    log.info("parsing images to standard format")
+    out: list[Repo] = []
+    for image in images:
+        tag_split = image.split(":")
+        tag = "main"
+        if len(tag_split) == 2:
+            tag = tag_split[1]
+
+        if tag == "latest":
+            tag = "main"
+
+        path_split = tag_split[0].split("/")
+        name = path_split[-1]
+        out.append(Repo(f"{name}@{tag}"))
+
+    return out
+
+
+def get_file_content(owner: str, repo: str, file_path: str, ref: str) -> str:
+    global log
+    log = log
+    log.info(f"Getting file content for {owner}/{repo}/{file_path} at {ref}")
+
+    url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
+    response = requests.get(url, headers=set_headers(), timeout=TIMEOUT)
+    response.raise_for_status()
+    file_data = response.json()
+
+    # GitHub API returns content in base64 encoding
+    content = base64.b64decode(file_data["content"]).decode("utf-8")
+
+    log.debug(f"Successfully fetched {file_path} content from {ref}")
+    return content
+
+
+def get_related_images(log: logging.Logger, owner: str, _repo: Repo) -> list[str]:
+    log.info(f"Getting the related images from {_repo.name}'s CSV")
+    _images: list[str] = []
+
+    try:
+        ref = _repo.tag if _repo.tag is not None else "main"
+        csv_yaml_content = get_file_content(
+            owner,
+            _repo.name,
+            f"bundle/manifests/{_repo.name}.clusterserviceversion.yaml",
+            ref,
+        )
+    except requests.exceptions.HTTPError as e:
+        log.debug(f"file was not found, {e}")
+        raise ValueError("file not found")
+    content: Dict[str, Any] = yaml.safe_load(csv_yaml_content)
+    log.info("CSV file loaded")
+    spec = content.get("spec")
+    if spec is None:
+        return _images
+    related_images = spec.get("relatedImages")
+    log.debug(f"{related_images=}")
+
+    if related_images is None:
+        return _images
+
+    for image in related_images:
+        log.debug(image)
+        _images.append(image["image"])
+    log.debug(f"{_images=}")
+    return _images
+
+
+def get_operator_release_yaml(
+    logger: logging.Logger, owner: str, _repo: str, _version: str = "latest"
+) -> tuple[str, str]:
+    global log
+    log = logger
+    repo = Repo(_repo)
+    repo.tag = _version
+    log.info(f"Getting {repo} release.yaml")
+
+    tag = _version
+    log.debug("Get the latest release information")
+    release_data = get_release(owner, repo)
+
+    if not release_data.tag:
+        raise ValueError(f"No release found for {repo}")
+
+    tag = release_data.tag
+
+    if tag is None:
+        raise ValueError(f"No tag available for {repo}")
+
+    log.debug("Fetch the release.yaml file content")
+    try:
+        release_yaml_content = get_file_content(
+            owner=owner,
+            repo=repo.name,
+            file_path="release.yaml",
+            ref=tag,
+        )
+
+        log.info(f"Successfully fetched release.yaml for {tag}")
+        return tag, release_yaml_content
+
+    except requests.HTTPError as e:
+        if e.response.status_code == 404:
+            raise ValueError(f"release.yaml not found in {repo} release {tag}")
+        raise
+
+
+def parse_release_yaml_to_repos(yaml_str: str) -> list[Repo]:
+    repos: list[Repo] = []
+    data = yaml.safe_load(yaml_str)
+    for key, value in data["dependencies"].items():
+        repos.append(Repo(f"{key}@{version_formatter(value)}"))
+    return repos
+
+
+def version_formatter(version: str) -> str:
+    if version == "0.0.0":
+        return "main"
+    return f"v{version}"
