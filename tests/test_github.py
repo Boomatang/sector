@@ -145,7 +145,7 @@ class TestGitHubFunctions:
         # Test the function
         with pytest.raises(
             ValueError,
-            match="release.yaml not found in kuadrant-operator release v1.0.0",
+            match="release.yaml not found in kuadrant-operator@latest release v1.0.0",
         ):
             get_operator_release_yaml(log, "kuadrant", "kuadrant-operator")
 

@@ -93,7 +93,7 @@ def get_release(owner: str, repo: Repo) -> ReleaseData:
     global log
     log = log
     log.info(f"Getting release data for {owner}/{repo}")
-    version = "latest" if repo.tag is None else f"tags/{repo.tag}"
+    version = "latest" if repo.tag == "latest" else f"tags/{repo.tag}"
     url = f"https://api.github.com/repos/{owner}/{repo.name}/releases/{version}"
     response = requests.get(url, headers=set_headers(), timeout=TIMEOUT)
     response.raise_for_status()
@@ -195,20 +195,43 @@ def mapper(config: dict[str, str], repos: list[Repo]) -> list[Repo]:
 
 
 def result(
-    owner: str, project: str, log: logging.Logger, config: dict[Any, Any], _sort: str
+    owner: str,
+    project: str,
+    log: logging.Logger,
+    config: dict[Any, Any],
+    _sort: str,
+    _version: str = "latest",
 ) -> None:
-    release_tag, release_yaml_content = get_operator_release_yaml(log, owner, project)
+    root_repo = Repo(f"{project}")
+    try:
+        release_tag, release_yaml_content = get_operator_release_yaml(
+            log, owner, project, _version
+        )
+        log.debug("Parse the release.yaml to extract repository versions")
+        repos = parse_release_yaml_to_repos(release_yaml_content)
+        root_repo.tag = release_tag
+    except ValueError:
+        log.debug(f"Error trying to find release.yaml for {project}")
 
-    log.debug("Parse the release.yaml to extract repository versions")
-    repos = parse_release_yaml_to_repos(release_yaml_content)
+        try:
+            root_repo.tag = _version
+            release_data = get_release(owner, root_repo)
+            root_repo.tag = release_data.tag
+            related_images = get_related_images(log, owner, root_repo)
+            repos = parse_relate_images(log, related_images)
+        except ValueError:
+            log.debug(f"Error trying to find CSV file for {project}")
+            exit(0)
 
-    root_repo = Repo(f"{project}@{release_tag}")
     tree = Tree(str(root_repo))
     sub_repos = []
     for repo in repos:
         local_tree = tree.add(str(repo))
         log.debug(f"trying to find details on {repo}")
         try:
+            if repo.tag is None:
+                log.error("this should never happen")
+                raise Exception("Tag is none")
             release_tag, release_yaml_content = get_operator_release_yaml(
                 log, owner, repo.name, _version=repo.tag
             )
@@ -229,7 +252,6 @@ def result(
 
     repos.extend(sub_repos)
 
-    root_repo = Repo(f"{project}@{release_tag}")
     repos.append(root_repo)
 
     repos = mapper(config["mapper"], repos)
@@ -316,22 +338,22 @@ def get_related_images(log: logging.Logger, owner: str, _repo: Repo) -> list[str
 
 
 def get_operator_release_yaml(
-    logger: logging.Logger, owner: str, _repo: str, _version: str | None = None
+    logger: logging.Logger, owner: str, _repo: str, _version: str = "latest"
 ) -> tuple[str, str]:
     global log
     log = logger
     repo = Repo(_repo)
+    repo.tag = _version
     log.info(f"Getting {repo} release.yaml")
 
     tag = _version
-    if _version is None:
-        log.debug("Get the latest release information")
-        release_data = get_release(owner, repo)
+    log.debug("Get the latest release information")
+    release_data = get_release(owner, repo)
 
-        if not release_data.tag:
-            raise ValueError(f"No release found for {repo}")
+    if not release_data.tag:
+        raise ValueError(f"No release found for {repo}")
 
-        tag = release_data.tag
+    tag = release_data.tag
 
     if tag is None:
         raise ValueError(f"No tag available for {repo}")

@@ -77,7 +77,7 @@ dependencies:
         # Verify that the kuadrant-operator release.yaml was fetched (first call)
         assert mock_get_release_yaml.call_count == 3
         mock_get_release_yaml.assert_any_call(
-            mock_logger, "kuadrant", "kuadrant-operator"
+            mock_logger, "kuadrant", "kuadrant-operator", "latest"
         )
 
         # Verify that the YAML was parsed
@@ -95,14 +95,12 @@ dependencies:
         assert "limitador@v2.0.0" in output_text
 
     @patch("sector.configuration.load")
-    @patch("sector.github.get_operator_release_yaml")
     @patch("sector.logger.get_logger")
     @patch("builtins.print")
     def test_result_handles_error(
         self,
         mock_print: Mock,
         mock_get_logger: Mock,
-        mock_get_release_yaml: Mock,
         mock_config_load: Mock,
     ) -> None:
         """Test that the result command handles errors gracefully."""
@@ -110,13 +108,8 @@ dependencies:
         mock_logger = Mock()
         mock_get_logger.return_value = mock_logger
 
-        # Mock configuration
-        mock_config_load.return_value = {"mapper": {}}
-
-        # Mock an error when fetching release.yaml
-        mock_get_release_yaml.side_effect = ValueError(
-            "No release found for kuadrant-operator"
-        )
+        # Mock an error when loading configuration
+        mock_config_load.side_effect = ValueError("Configuration file not found")
 
         # Call the result function using CliRunner
         runner = CliRunner()
@@ -128,4 +121,4 @@ dependencies:
         # Verify that the error was printed
         output_text = result_output.output
         assert "Error:" in output_text
-        assert "No release found for kuadrant-operator" in output_text
+        assert "Configuration file not found" in output_text

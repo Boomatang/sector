@@ -111,7 +111,16 @@ def info(owner: str, project: tuple[str], _sort: str, detailed: bool) -> None:
     show_default=True,
     help="Changet the order in which the list is ordered.",
 )
-def result(owner: str, project: str, config_path: str, _sort: str) -> None:
+@click.option(
+    "--version",
+    "_version",
+    default="latest",
+    show_default=True,
+    help="Set the version to look up the details on. The 'latest' tag means the latest release version, and not the main branch",
+)
+def result(
+    owner: str, project: str, config_path: str, _sort: str, _version: str
+) -> None:
     """
     Get the break down of what is new in the project and its dependencies.
     This includes fetching the release.yaml file for the latest kuadrant-operator release.
@@ -123,7 +132,7 @@ def result(owner: str, project: str, config_path: str, _sort: str) -> None:
 
     try:
         _config = configuration.load(config_path)
-        github.result(owner, project, log, _config, _sort)
+        github.result(owner, project, log, _config, _sort, _version)
 
     except ValueError as e:
         log.exception(e)
