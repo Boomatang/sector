@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 import pytest
 from click.testing import CliRunner
 
-from sector.cli import result
+from sector.cli import current
 from sector.github import ReleaseData
 
 
@@ -67,9 +67,9 @@ dependencies:
             ValueError("No release found"),  # Third call for limitador
         ]
 
-        # Call the result function using CliRunner
+        # Call the current function using CliRunner
         runner = CliRunner()
-        result_output = runner.invoke(result, ["--owner", "kuadrant"])
+        result_output = runner.invoke(current, ["--owner", "kuadrant"])
 
         # Verify the command executed successfully
         assert result_output.exit_code == 0
@@ -111,9 +111,9 @@ dependencies:
         # Mock an error when loading configuration
         mock_config_load.side_effect = ValueError("Configuration file not found")
 
-        # Call the result function using CliRunner
+        # Call the current function using CliRunner
         runner = CliRunner()
-        result_output = runner.invoke(result, ["--owner", "kuadrant"])
+        result_output = runner.invoke(current, ["--owner", "kuadrant"])
 
         # Verify the command executed successfully (errors are handled gracefully)
         assert result_output.exit_code == 0
